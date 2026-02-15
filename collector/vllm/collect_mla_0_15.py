@@ -105,7 +105,7 @@ def run_attention_torch(
             attn_selector_config = AttentionSelectorConfig(
                 head_size=head_dim,
                 dtype=dtype,
-                kv_cache_dtype="fp8" if use_fp8_kv_cache else "bf16",  # explicit dtype instead of auto
+                kv_cache_dtype="fp8" if use_fp8_kv_cache else None,  # MLA: use None for non-fp8 (auto doesn't work)
                 block_size=block_size,
                 use_mla=True,
                 has_sink=False,

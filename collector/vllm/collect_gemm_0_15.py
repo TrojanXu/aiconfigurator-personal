@@ -103,17 +103,12 @@ def run_gemm(exit_stack, gemm_type, m, n, k, perf_filename, device="cuda:0"):
         # TODO, to evaluate random weights impact
         gemm.to(torch.device(device))
 
-        if gemm_type == "fp8" and hasattr(gemm, "weight"):
-            new_weight = gemm.weight.data.t()
-            # print("new_weight stride:", new_weight.stride())
-            # mnk = 1,128,128 weight stride = (128,1)
-            # transpose to (1,128) for fp8 cutlass limit
-            gemm.weight = torch.nn.Parameter(new_weight)
-            # print("after fix, weight stride:", gemm.weight.data.stride())
-            
-            # v0.15.1+: must call process_weights_after_loading() for proper FP8 weight handling
+        if gemm_type == "fp8":
+            # v0.15.1+: process_weights_after_loading() handles all FP8 weight preparation
+            # Initialize weight_scale on GPU
             with torch.no_grad():
                 gemm.weight_scale.copy_(torch.ones(gemm.weight_scale.shape, dtype=torch.float32, device=device))
+            # Let process_weights_after_loading handle transpose and quantization
             gemm.quant_method.process_weights_after_loading(gemm)
         elif gemm_type == "fp8_block":
             block_n, block_k = FP8_BLOCK_SHAPE
