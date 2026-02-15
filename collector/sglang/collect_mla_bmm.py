@@ -233,3 +233,21 @@ def run_mla_gen_post(num_tokens, num_heads, dtype, num_warmups, num_runs, perf_f
         perf_filename=perf_filename,
         power_stats=results["power_stats"],
     )
+
+
+if __name__ == "__main__":
+    import random
+
+    # MLA gen pre test cases
+    pre_cases = get_mla_gen_pre_test_cases()
+    sampled_pre = random.sample(pre_cases, min(5, len(pre_cases)))
+    for test_case in sampled_pre:
+        print(test_case)
+        run_mla_gen_pre(*test_case, device="cuda:0")
+
+    # MLA gen post test cases
+    post_cases = get_mla_gen_post_test_cases()
+    sampled_post = random.sample(post_cases, min(5, len(post_cases)))
+    for test_case in sampled_post:
+        print(test_case)
+        run_mla_gen_post(*test_case, device="cuda:0")

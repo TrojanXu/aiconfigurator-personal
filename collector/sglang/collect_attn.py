@@ -509,3 +509,21 @@ def run_attention_torch(
     )
 
     return Timing(latency * 1e-3)
+
+
+if __name__ == "__main__":
+    import random
+
+    # Context attention test cases
+    context_cases = get_context_attention_test_cases()
+    sampled_context = random.sample(context_cases, min(5, len(context_cases)))
+    for test_case in sampled_context:
+        print(test_case)
+        run_attention_torch(*test_case, device="cuda:0")
+
+    # Generation attention test cases
+    generation_cases = get_generation_attention_test_cases()
+    sampled_generation = random.sample(generation_cases, min(5, len(generation_cases)))
+    for test_case in sampled_generation:
+        print(test_case)
+        run_attention_torch(*test_case, device="cuda:0")
