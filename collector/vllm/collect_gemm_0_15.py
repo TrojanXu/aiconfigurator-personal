@@ -17,7 +17,7 @@ from collector.common_test_cases import get_gemm_common_test_cases
 from collector.helper import benchmark_with_power, get_sm_version, log_perf
 from collector.vllm.utils import setup_distributed, with_exit_stack
 
-compatible_versions = ["0.11.0", "0.12.0", "0.14.0"]
+compatible_versions = ["0.15.0", "0.15.1"]
 
 FP8_BLOCK_SHAPE = (128, 128)
 
@@ -110,6 +110,11 @@ def run_gemm(exit_stack, gemm_type, m, n, k, perf_filename, device="cuda:0"):
             # transpose to (1,128) for fp8 cutlass limit
             gemm.weight = torch.nn.Parameter(new_weight)
             # print("after fix, weight stride:", gemm.weight.data.stride())
+            
+            # v0.15.1+: must call process_weights_after_loading() for proper FP8 weight handling
+            with torch.no_grad():
+                gemm.weight_scale.copy_(torch.ones(gemm.weight_scale.shape, dtype=torch.float32, device=device))
+            gemm.quant_method.process_weights_after_loading(gemm)
         elif gemm_type == "fp8_block":
             block_n, block_k = FP8_BLOCK_SHAPE
             with torch.no_grad():
