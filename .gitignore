@@ -21,3 +21,6 @@ env/
 *.pyc
 *.pyo
 *.pyd
+.venv-vllm/
+# Performance data files
+collector/vllm/*perf*.txt

@@ -249,3 +249,15 @@ def run_gemm(gemm_type, batch_size, N, K, perf_filename, device):  # noqa: N803
         perf_filename=perf_filename,
         power_stats=results["power_stats"],
     )
+
+
+if __name__ == "__main__":
+    import random
+
+    test_cases = get_gemm_test_cases()
+    # Randomly select 10 test cases
+    sampled_cases = random.sample(test_cases, min(10, len(test_cases)))
+
+    for test_case in sampled_cases:
+        print(test_case)
+        run_gemm(*test_case, device="cuda:0")
