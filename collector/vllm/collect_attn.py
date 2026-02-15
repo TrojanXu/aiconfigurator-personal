@@ -46,7 +46,7 @@ from collector.vllm.utils import (
     with_exit_stack,
 )
 
-compatible_version = ["0.11.0", "0.12.0"]
+compatible_version = ["0.11.0", "0.12.0", "0.14.0", "0.15.0", "0.15.1"]
 
 
 class MockAttentionLayer:
@@ -62,7 +62,7 @@ class MockAttentionLayer:
         self._v_scale_float = 1.0
 
 
-compatible_versions = ["0.11.0", "0.12.0"]
+compatible_versions = ["0.11.0", "0.12.0", "0.14.0", "0.15.0", "0.15.1"]
 
 # https://github.com/vllm-project/vllm/tree/main/vllm/v1/attention/backends
 # support MHA GQA MQA fp16 tensor and float16/fp8 kv cache
@@ -129,18 +129,33 @@ def run_attention_torch(
                     use_v1=True,
                 )
             except TypeError:
-                from vllm.v1.attention.selector import AttentionSelectorConfig
+                try:
+                    from vllm.v1.attention.selector import AttentionSelectorConfig
 
-                attn_selector_config = AttentionSelectorConfig(
-                    head_size=head_dim,
-                    dtype=dtype,
-                    kv_cache_dtype="fp8" if use_fp8_kv_cache else None,
-                    block_size=block_size,
-                    use_mla=False,
-                    has_sink=False,
-                    use_sparse=False,
-                )
-                backend = current_platform.get_attn_backend_cls(None, attn_selector_config)
+                    attn_selector_config = AttentionSelectorConfig(
+                        head_size=head_dim,
+                        dtype=dtype,
+                        kv_cache_dtype="fp8" if use_fp8_kv_cache else None,
+                        block_size=block_size,
+                        use_mla=False,
+                        has_sink=False,
+                        use_sparse=False,
+                    )
+                    backend = current_platform.get_attn_backend_cls(None, attn_selector_config)
+                except TypeError:
+                    # vllm 0.15.1+: signature changed
+                    from vllm.v1.attention.selector import AttentionSelectorConfig
+
+                    attn_selector_config = AttentionSelectorConfig(
+                        head_size=head_dim,
+                        dtype=dtype,
+                        kv_cache_dtype="fp8" if use_fp8_kv_cache else "auto",
+                        block_size=block_size,
+                        use_mla=False,
+                        has_sink=False,
+                        use_sparse=False,
+                    )
+                    backend = current_platform.get_attn_backend_cls(None, attn_selector_config)
 
     backend_name_obj = resolve_obj_by_qualname(backend)
     backend_name_str = backend_name_obj.get_name()

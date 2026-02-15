@@ -1,0 +1,229 @@
+#!/usr/bin/env python3
+"""
+api-diff: Compare framework APIs between versions.
+
+Detects breaking changes in framework internals that affect collectors.
+"""
+
+import argparse
+import ast
+import json
+import subprocess
+import sys
+from pathlib import Path
+from typing import Dict, List, Set, Any
+
+# Git cache directory
+CACHE_DIR = Path.home() / ".cache/aic-schema/git"
+
+# Backend configurations
+BACKEND_CONFIG = {
+    "trtllm": {
+        "repo_url": "https://github.com/NVIDIA/TensorRT-LLM.git",
+        "package_name": "tensorrt_llm",
+        "modules": [
+            "_torch/attention_backend",
+            "_torch/modules/fused_moe",
+            "_torch/modules/mamba",
+            "_torch/pyexecutor",
+            "_torch/model_config",
+        ],
+    },
+    "vllm": {
+        "repo_url": "https://github.com/vllm-project/vllm.git",
+        "package_name": "vllm",
+        "modules": [
+            "engine",
+            "model_executor",
+            "worker",
+        ],
+    },
+    "sglang": {
+        "repo_url": "https://github.com/sgl-project/sglang.git",
+        "package_name": "sglang",
+        "modules": [
+            "srt",
+        ],
+    },
+}
+
+
+def clone_repo(backend: str, version: str) -> Path:
+    """Clone a specific version of the framework repo."""
+    config = BACKEND_CONFIG[backend]
+    repo_dir = CACHE_DIR / f"{backend}-{version}"
+
+    if not repo_dir.exists():
+        print(f"Cloning {backend} {version}...", file=sys.stderr)
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        result = subprocess.run(
+            ["git", "clone", "--depth", "1", "--branch", version, config["repo_url"], str(repo_dir)],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            print(f"Failed to clone {version}: {result.stderr}", file=sys.stderr)
+            sys.exit(1)
+
+    return repo_dir
+
+
+def extract_module_apis(module_path: Path) -> Dict[str, Any]:
+    """Extract all API signatures from a module directory."""
+    apis = {}
+
+    for py_file in module_path.rglob("*.py"):
+        rel_path = py_file.relative_to(module_path.parent)
+        module_name = str(rel_path).replace("/", ".").replace(".py", "")
+
+        try:
+            with open(py_file) as f:
+                content = f.read()
+
+            tree = ast.parse(content)
+
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ClassDef):
+                    methods = []
+                    for item in node.body:
+                        if isinstance(item, ast.FunctionDef):
+                            methods.append(item.name)
+                    apis[f"{module_name}.{node.name}"] = {
+                        "type": "class",
+                        "methods": sorted(set(methods)),
+                    }
+                elif isinstance(node, ast.FunctionDef) and not node.name.startswith("_"):
+                    # Only export public functions
+                    args = [arg.arg for arg in node.args.args]
+                    apis[f"{module_name}.{node.name}"] = {
+                        "type": "function",
+                        "args": args,
+                    }
+        except Exception:
+            pass
+
+    return apis
+
+
+def diff_apis(old_apis: Dict[str, Any], new_apis: Dict[str, Any]) -> Dict[str, Any]:
+    """Compare two sets of APIs and find changes."""
+    old_keys = set(old_apis.keys())
+    new_keys = set(new_apis.keys())
+
+    added = sorted(new_keys - old_keys)
+    removed = sorted(old_keys - new_keys)
+
+    # Find changed APIs
+    changed = []
+    for key in old_keys & new_keys:
+        if old_apis[key] != new_apis[key]:
+            changed.append({
+                "api": key,
+                "old": old_apis[key],
+                "new": new_apis[key],
+            })
+
+    return {
+        "added": added,
+        "removed": removed,
+        "changed": changed,
+        "summary": {
+            "added": len(added),
+            "removed": len(removed),
+            "changed": len(changed),
+        },
+    }
+
+
+def find_breaking_changes(diff_result: Dict[str, Any]) -> List[str]:
+    """Identify breaking changes that affect collectors."""
+    breaking = []
+
+    # Removed APIs are breaking
+    for api in diff_result["removed"]:
+        if "KVCache" in api or "create_" in api or "Manager" in api:
+            breaking.append(f"Removed: {api}")
+
+    # Changed class methods
+    for change in diff_result["changed"]:
+        if change["old"]["type"] == "class":
+            old_methods = set(change["old"]["methods"])
+            new_methods = set(change["new"]["methods"])
+
+            removed_methods = old_methods - new_methods
+            for method in removed_methods:
+                if not method.startswith("_"):
+                    breaking.append(f"{change['api']}.{method} removed")
+
+    return breaking
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Compare framework APIs between versions")
+    parser.add_argument("backend", choices=["trtllm", "vllm", "sglang"])
+    parser.add_argument("old_version", help="Old version tag (e.g., v1.2.0rc5)")
+    parser.add_argument("new_version", help="New version tag (e.g., v1.3.0rc3)")
+    parser.add_argument("-o", "--output", help="Output file")
+    parser.add_argument("--module", help="Specific module to check")
+
+    args = parser.parse_args()
+
+    config = BACKEND_CONFIG[args.backend]
+
+    # Clone repos
+    old_repo = clone_repo(args.backend, args.old_version)
+    new_repo = clone_repo(args.backend, args.new_version)
+
+    package_name = config["package_name"]
+
+    # Analyze modules
+    modules_to_check = [args.module] if args.module else config["modules"]
+
+    results = {
+        "backend": args.backend,
+        "old_version": args.old_version,
+        "new_version": args.new_version,
+        "modules": {},
+        "summary": {
+            "total_added": 0,
+            "total_removed": 0,
+            "total_changed": 0,
+        },
+    }
+
+    for module in modules_to_check:
+        old_module_path = old_repo / package_name / module
+        new_module_path = new_repo / package_name / module
+
+        if not old_module_path.exists() or not new_module_path.exists():
+            continue
+
+        old_apis = extract_module_apis(old_module_path)
+        new_apis = extract_module_apis(new_module_path)
+
+        diff = diff_apis(old_apis, new_apis)
+        breaking = find_breaking_changes(diff)
+
+        results["modules"][module] = {
+            "added": diff["summary"]["added"],
+            "removed": diff["summary"]["removed"],
+            "changed": diff["summary"]["changed"],
+            "breaking_changes": breaking,
+        }
+
+        results["summary"]["total_added"] += diff["summary"]["added"]
+        results["summary"]["total_removed"] += diff["summary"]["removed"]
+        results["summary"]["total_changed"] += diff["summary"]["changed"]
+
+    # Output
+    output = json.dumps(results, indent=2)
+
+    if args.output:
+        Path(args.output).write_text(output)
+        print(f"Diff written to {args.output}", file=sys.stderr)
+    else:
+        print(output)
+
+
+if __name__ == "__main__":
+    main()
