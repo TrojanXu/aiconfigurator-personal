@@ -11,7 +11,10 @@ Automatically detect and update generator templates when framework config format
 ## Tool
 
 ```bash
-aic-schema <command> [options]
+./tools/aic-schema <command> [options]
+
+# Or from project root:
+agents/generator_autoupdate/tools/aic-schema <command> [options]
 
 Commands:
   current <backend>              Extract schema from currently installed version
@@ -117,9 +120,11 @@ Action: Remove from template and `backend_config_mapping.yaml`
 
 ```
 aiconfigurator/
-├── tools/
-│   ├── aic-schema              # CLI tool
-│   └── .schema-cache/          # Cached schema files
+├── agents/
+│   └── generator_autoupdate/
+│       ├── skill.md             # This file
+│       └── tools/
+│           └── aic-schema       # CLI tool
 └── src/aiconfigurator/generator/
     └── config/
         ├── backend_config_mapping.yaml   # Parameter mappings
