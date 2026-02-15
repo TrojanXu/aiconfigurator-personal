@@ -197,6 +197,38 @@ parameters:
   sglang: null
   trtllm: kv_cache_config.use_kv_cache_manager_v2
 
+# vllm v0.15.0+
+- param_key: mamba_cache_mode
+  vllm: mamba-cache-mode
+  sglang: null
+  trtllm: null
+
+- param_key: mm_encoder_only
+  vllm: mm-encoder-only
+  sglang: null
+  trtllm: null
+
+# vllm v0.16.0+
+- param_key: enable_flashinfer_autotune
+  vllm: enable-flashinfer-autotune
+  sglang: null
+  trtllm: null
+
+- param_key: kernel_config
+  vllm: kernel-config
+  sglang: null
+  trtllm: null
+
+- param_key: specialize_active_lora
+  vllm: specialize-active-lora
+  sglang: null
+  trtllm: null
+
+- param_key: weight_transfer_config
+  vllm: weight-transfer-config
+  sglang: null
+  trtllm: null
+
 # Others
 - param_key: disable_overlap_scheduler
   vllm: null

@@ -487,10 +487,10 @@ def extract_schemas_from_git(repo_dir: Path, backend: str) -> dict:
             "builder.py",
         ],
         "vllm": [
-            "config.py",
+            "vllm/engine/arg_utils.py",
         ],
         "sglang": [
-            "launch_args.py",
+            "python/sglang/srt/server_args.py",
         ],
     }
     
@@ -525,7 +525,14 @@ def extract_schemas_from_git(repo_dir: Path, backend: str) -> dict:
                         is_pydantic = True
                         break
                 
-                if is_pydantic:
+                # Check if it's a dataclass
+                is_dataclass = False
+                for decorator in node.decorator_list:
+                    if isinstance(decorator, ast.Name) and decorator.id == 'dataclass':
+                        is_dataclass = True
+                        break
+                
+                if is_pydantic or is_dataclass:
                     fields = {}
                     for item in node.body:
                         if isinstance(item, ast.AnnAssign):
