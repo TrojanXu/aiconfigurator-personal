@@ -21,3 +21,6 @@ env/
 *.pyc
 *.pyo
 *.pyd
+
+# Schema cache
+tools/.schema-cache/
